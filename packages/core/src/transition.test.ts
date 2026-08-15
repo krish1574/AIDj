@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_TEMPO_STRETCH,
   MIN_BEAT_CONFIDENCE,
+  chooseEntryPoint,
+  chooseExitPoint,
   crossfadeGains,
   loudnessGain,
   nearestBeatIndex,
@@ -35,6 +37,7 @@ function track(overrides: Partial<TransitionTrack> & { id: number }): Transition
     introEndMs: 2_000,
     outroStartMs: durationMs - 20_000,
     integratedLufs: -10,
+    sections: [],
     ...overrides,
   };
 }
@@ -125,6 +128,73 @@ describe('phraseAlignedDownbeat', () => {
   it('returns null when there are no downbeats', () => {
     const subject = track({ id: 1, downbeatIndices: [] });
     expect(phraseAlignedDownbeat(subject, 1000)).toBeNull();
+  });
+});
+
+describe('entry and exit point selection', () => {
+  /** A track that opens loud, has a calm passage, then a loud finish. */
+  const structured = () =>
+    track({
+      id: 1,
+      durationMs: 240_000,
+      introEndMs: 1_000,
+      outroStartMs: 235_000,
+      sections: [
+        { startMs: 0, endMs: 30_000, energy: 0.9 }, // opens on the hook
+        { startMs: 30_000, endMs: 60_000, energy: 0.3 }, // calm
+        { startMs: 60_000, endMs: 180_000, energy: 0.95 },
+        { startMs: 180_000, endMs: 215_000, energy: 0.25 }, // breakdown
+        { startMs: 215_000, endMs: 240_000, energy: 0.9 },
+      ],
+    });
+
+  it('enters on a calm section rather than the opening hook', () => {
+    // Cueing to the first audible sample drops a vocal hook straight onto the
+    // outgoing track's vocal, which is the most obvious way a mix sounds wrong.
+    expect(chooseEntryPoint(structured())).toBe(30_000);
+  });
+
+  it('exits from a calm section rather than a fixed offset from the end', () => {
+    expect(chooseExitPoint(structured(), 8_000)).toBe(180_000);
+  });
+
+  it('falls back to silence boundaries when nothing is calm', () => {
+    // Normal for a continuous DJ mix that runs at full energy throughout.
+    const flat = track({
+      id: 2,
+      durationMs: 200_000,
+      introEndMs: 3_000,
+      outroStartMs: 190_000,
+      sections: [
+        { startMs: 0, endMs: 100_000, energy: 0.8 },
+        { startMs: 100_000, endMs: 200_000, energy: 0.8 },
+      ],
+    });
+    // Equal energies still count as "at or below average", so this must at
+    // least stay within the track and never return something nonsensical.
+    const entry = chooseEntryPoint(flat);
+    expect(entry).toBeGreaterThanOrEqual(0);
+    expect(entry).toBeLessThan(flat.durationMs);
+  });
+
+  it('handles a track with no sections at all', () => {
+    const bare = track({ id: 3, sections: [] });
+    expect(chooseEntryPoint(bare)).toBe(bare.introEndMs);
+    expect(chooseExitPoint(bare, 8_000)).toBeLessThanOrEqual(bare.outroStartMs);
+  });
+
+  it('never enters most of the way through a track', () => {
+    // A "calm section" at 80% through is not an entry point, it is skipping
+    // the track.
+    const lateCalm = track({
+      id: 4,
+      durationMs: 240_000,
+      sections: [
+        { startMs: 0, endMs: 200_000, energy: 0.9 },
+        { startMs: 200_000, endMs: 240_000, energy: 0.1 },
+      ],
+    });
+    expect(chooseEntryPoint(lateCalm)).toBeLessThan(240_000 / 3 + 5_000);
   });
 });
 

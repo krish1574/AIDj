@@ -151,6 +151,34 @@ TEST_CASE("a delayed transition does not start early", "[mixer]") {
   REQUIRE(mixer.transitionsCompleted() == 0);
 }
 
+TEST_CASE("incoming voice is not consumed before the transition", "[mixer]") {
+  // The bug this guards against was audible rather than theoretical: the
+  // incoming voice is activated when the transition is armed so its decoder
+  // can run, and it was also being read at zero gain during the wait. The
+  // track silently played through itself, so the fade began seconds past the
+  // downbeat the planner picked and the mix landed on the wrong bar.
+  Mixer mixer;
+
+  const size_t frames = static_cast<size_t>(kEngineSampleRate);
+  fillVoice(mixer, 0, 0.5f, frames);
+  fillVoice(mixer, 1, 0.5f, frames);
+
+  mixer.post(Command{CommandType::SetVoiceActive, 0, 0, 1.0f, 0});
+  mixer.post(Command{CommandType::SetVoiceGain, 0, 0, 1.0f, 0});
+
+  const size_t availableBefore = mixer.voice(1).ring.sizeAvailableToRead();
+
+  // Arm half a second ahead and render a quarter of a second of it.
+  mixer.stageTransition(plainCrossfade(200.0), 0, 1);
+  mixer.post(Command{CommandType::ArmTransition, 0, 0, 0.0f,
+                     kEngineSampleRate / 2});
+  renderBlocks(mixer, static_cast<int>((kEngineSampleRate / 4) / kBlockFrames));
+
+  // Not a single frame of the incoming track may have been consumed.
+  REQUIRE(mixer.voice(1).ring.sizeAvailableToRead() == availableBefore);
+  REQUIRE(mixer.voice(1).framesRendered.load() == 0);
+}
+
 TEST_CASE("clearing a transition restores ordinary playback", "[mixer]") {
   Mixer mixer;
   fillVoice(mixer, 0, 0.5f, static_cast<size_t>(kEngineSampleRate));

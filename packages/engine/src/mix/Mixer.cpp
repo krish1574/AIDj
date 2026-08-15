@@ -203,6 +203,19 @@ void Mixer::render(float* output, int32_t frameCount) {
       continue;
     }
 
+    // An incoming voice is activated when the transition is armed, which can
+    // be many seconds before it starts, so that its decoder is running and its
+    // ring is full when the fade begins. It must not be *consumed* during that
+    // wait: reading the ring at zero gain silently plays the track, so by the
+    // time the fade started it would be seconds past the cue point the planner
+    // chose - the transition would land on the wrong bar, which is exactly
+    // what a beat-matched mix cannot survive.
+    if (timeline_.isArmed() && static_cast<int32_t>(v) == incomingVoice_ &&
+        blockStart + frames <= timeline_.startFrame()) {
+      voice.currentGain.store(0.0f, std::memory_order_relaxed);
+      continue;
+    }
+
     const size_t read = voice.ring.readOrSilence(scratch_.data(), sampleCount);
     if (read < sampleCount && !voice.endOfStream.load(std::memory_order_relaxed)) {
       starvedFrames_.fetch_add(

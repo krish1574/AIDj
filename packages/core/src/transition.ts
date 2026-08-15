@@ -33,10 +33,28 @@ export interface TransitionTrack {
   downbeatIndices: readonly number[];
   beatsPerBar: number;
 
-  /** Milliseconds; audible music starts here, after any leading silence. */
+  /**
+   * Milliseconds; audible music starts here, after any leading silence.
+   *
+   * NOT the end of a musical intro. This is a silence boundary, which is a
+   * very different thing: a track that opens on a vocal hook has introEndMs
+   * at its first syllable. Use `sections` to find somewhere sensible to mix
+   * into; this only says where sound begins.
+   */
   introEndMs: number;
-  /** Milliseconds; audible music ends here. */
+  /** Milliseconds; audible music ends here. Also a silence boundary. */
   outroStartMs: number;
+
+  /**
+   * Structural sections with their relative energy, from the analyser.
+   *
+   * This is what makes a transition musical rather than merely aligned. A DJ
+   * mixes out of a calm passage and into one, because dropping a vocal hook
+   * underneath another vocal is the most obvious way a mix sounds wrong - and
+   * cueing to "the first audible moment" does exactly that on any track that
+   * opens on its hook, which most modern edits do.
+   */
+  sections: readonly { startMs: number; endMs: number; energy: number }[];
 
   /** ITU-R BS.1770 integrated loudness, LUFS (negative). */
   integratedLufs: number;
@@ -236,6 +254,83 @@ export function phraseAlignedDownbeat(
   };
 }
 
+/**
+ * Where to bring a track in.
+ *
+ * Prefers the start of a calm section in the first part of the track over the
+ * first audible sample. On material that opens with its hook - most edits and
+ * mashups - cueing to the first sound drops a vocal straight on top of the
+ * outgoing track's vocal, which is the single most obvious way a mix sounds
+ * amateurish.
+ *
+ * Falls back to the first audible moment when there is no section quieter than
+ * the track's own average, which is normal for a continuous DJ mix that starts
+ * at full energy.
+ */
+export function chooseEntryPoint(track: TransitionTrack): number {
+  if (track.sections.length === 0) return track.introEndMs;
+
+  const averageEnergy =
+    track.sections.reduce((sum, section) => sum + section.energy, 0) /
+    track.sections.length;
+
+  // Only consider the opening third: entering three quarters of the way into
+  // a track is not an entry, it is skipping most of it.
+  const searchLimit = track.introEndMs + (track.durationMs - track.introEndMs) / 3;
+
+  let best: number | null = null;
+  for (const section of track.sections) {
+    if (section.startMs < track.introEndMs) continue;
+    if (section.startMs > searchLimit) break;
+    if (section.energy <= averageEnergy) {
+      best = section.startMs;
+      break;
+    }
+  }
+
+  return best ?? track.introEndMs;
+}
+
+/**
+ * Where to start mixing out of a track.
+ *
+ * Prefers a calm section late in the track - a breakdown or an outro - over an
+ * arbitrary "N seconds before the end". Mixing out of a chorus is possible but
+ * fights the music; mixing out of a quiet passage sounds deliberate.
+ */
+export function chooseExitPoint(
+  track: TransitionTrack,
+  transitionDurationMs: number,
+): number {
+  const latestSensible = Math.max(
+    track.introEndMs,
+    track.outroStartMs - transitionDurationMs,
+  );
+
+  if (track.sections.length === 0) return latestSensible;
+
+  const averageEnergy =
+    track.sections.reduce((sum, section) => sum + section.energy, 0) /
+    track.sections.length;
+
+  // Search backwards for a calm section that still leaves room for the whole
+  // transition before the track runs out.
+  let best: number | null = null;
+  for (let i = track.sections.length - 1; i >= 0; i -= 1) {
+    const section = track.sections[i];
+    if (section === undefined) continue;
+    if (section.startMs > latestSensible) continue;
+    // Not so early that most of the track is thrown away.
+    if (section.startMs < track.durationMs / 2) break;
+    if (section.energy <= averageEnergy) {
+      best = section.startMs;
+      break;
+    }
+  }
+
+  return best ?? latestSensible;
+}
+
 function hasUsableGrid(track: TransitionTrack): boolean {
   return (
     track.beatsMs.length >= 8 &&
@@ -349,15 +444,14 @@ export function planTransition(
   const msPerBar = (60000 / targetBpm) * outgoing.beatsPerBar;
   const wantedDurationMs = bars * msPerBar;
 
-  // Start the transition so that it finishes about where the outgoing track
-  // stops being interesting - its outro - rather than running past the end.
-  const idealStart = Math.max(
-    outgoing.introEndMs,
-    outgoing.outroStartMs - wantedDurationMs,
-  );
+  // Pick musical points first, then snap each to a downbeat. Doing it in this
+  // order matters: snapping an arbitrary timestamp to a bar line gives a
+  // rhythmically tidy transition in a musically wrong place.
+  const idealStart = chooseExitPoint(outgoing, wantedDurationMs);
+  const idealEntry = chooseEntryPoint(incoming);
 
   const outgoingPoint = phraseAlignedDownbeat(outgoing, idealStart);
-  const incomingPoint = phraseAlignedDownbeat(incoming, incoming.introEndMs);
+  const incomingPoint = phraseAlignedDownbeat(incoming, idealEntry);
 
   if (outgoingPoint === null || incomingPoint === null) {
     return simpleCrossfade(
@@ -446,11 +540,12 @@ function simpleCrossfade(
   const outgoingStartMs = Math.max(
     0,
     Math.min(
-      outgoing.outroStartMs,
+      chooseExitPoint(outgoing, wantedDurationMs),
       outgoing.durationMs - wantedDurationMs,
     ),
   );
-  const incomingStartMs = Math.max(0, incoming.introEndMs);
+  // Even without a grid, entering on a calm section beats entering on the hook.
+  const incomingStartMs = Math.max(0, chooseEntryPoint(incoming));
 
   const durationMs = Math.max(
     500,

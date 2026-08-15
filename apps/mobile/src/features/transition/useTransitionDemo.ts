@@ -43,6 +43,7 @@ async function toTransitionTrack(
     introEndMs: analysis.introEndMs,
     outroStartMs: analysis.outroStartMs,
     integratedLufs: analysis.integratedLufs,
+    sections: analysis.sections,
   };
 }
 
