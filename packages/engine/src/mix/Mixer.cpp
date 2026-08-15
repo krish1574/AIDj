@@ -80,11 +80,21 @@ Mixer::Mixer() {
   for (auto& voice : voices_) {
     voice = std::make_unique<Voice>(kRingCapacitySamples);
   }
+  for (auto& equaliser : equalisers_) {
+    equaliser.configure(kEngineSampleRate);
+  }
   scratch_.resize(static_cast<size_t>(kMaxCallbackFrames) * kEngineChannelCount,
                   0.0f);
 }
 
 bool Mixer::post(const Command& command) { return commands_.push(command); }
+
+void Mixer::stageTransition(const TransitionSpec& spec, int32_t outgoingVoice,
+                            int32_t incomingVoice) {
+  stagedSpec_ = spec;
+  stagedOutgoing_ = outgoingVoice;
+  stagedIncoming_ = incomingVoice;
+}
 
 void Mixer::drainCommands() {
   Command command;
@@ -113,11 +123,41 @@ void Mixer::drainCommands() {
             true, std::memory_order_relaxed);
         break;
       }
+      case CommandType::ArmTransition: {
+        // durationFrames carries the delay before the transition starts, so a
+        // caller can arm it now to fire at a precise beat later.
+        const int64_t start = now + command.durationFrames;
+        timeline_.arm(stagedSpec_, start, kEngineSampleRate);
+        outgoingVoice_ = stagedOutgoing_;
+        incomingVoice_ = stagedIncoming_;
+
+        // The incoming voice has to be running before the transition starts,
+        // or its first bars are missing when the fade begins.
+        if (incomingVoice_ >= 0) {
+          voices_[static_cast<size_t>(incomingVoice_)]->active.store(
+              true, std::memory_order_relaxed);
+        }
+        break;
+      }
+      case CommandType::ClearTransition: {
+        timeline_.clear();
+        outgoingVoice_ = -1;
+        incomingVoice_ = -1;
+        for (auto& equaliser : equalisers_) {
+          equaliser.setBandGains(1.0f, 1.0f, 1.0f);
+        }
+        break;
+      }
       case CommandType::Reset: {
         for (size_t i = 0; i < kVoiceCount; ++i) {
           ramps_[i] = GainRamp{};
           voices_[i]->active.store(false, std::memory_order_relaxed);
+          equalisers_[i].setBandGains(1.0f, 1.0f, 1.0f);
+          equalisers_[i].snapToTargets();
         }
+        timeline_.clear();
+        outgoingVoice_ = -1;
+        incomingVoice_ = -1;
         break;
       }
       case CommandType::None:
@@ -170,10 +210,40 @@ void Mixer::render(float* output, int32_t frameCount) {
           std::memory_order_relaxed);
     }
 
+    // A transition, when armed, overrides the plain gain ramp for the two
+    // voices it involves. Everything else keeps using the ramp, so the
+    // developer crossfade and manual gain still work unchanged.
+    const bool inTransition =
+        timeline_.isArmed() &&
+        (static_cast<int32_t>(v) == outgoingVoice_ ||
+         static_cast<int32_t>(v) == incomingVoice_);
+
+    if (inTransition) {
+      // EQ is applied to the whole block before the fade, using the values at
+      // the block's midpoint. The EQ smooths internally per sample, so this
+      // is not a stepped parameter - it is the target the smoother chases.
+      const int64_t midpoint = blockStart + frames / 2;
+      const VoiceParameters parameters =
+          static_cast<int32_t>(v) == outgoingVoice_
+              ? timeline_.outgoingAt(midpoint)
+              : timeline_.incomingAt(midpoint);
+
+      equalisers_[v].setBandGains(parameters.low, parameters.mid,
+                                  parameters.high);
+      equalisers_[v].process(scratch_.data(), static_cast<size_t>(frames));
+    }
+
     const GainRamp& ramp = ramps_[v];
     float lastGain = 0.0f;
     for (int32_t f = 0; f < frames; ++f) {
-      const float gain = ramp.valueAt(blockStart + f);
+      // Gain is evaluated per frame either way, so the fade itself stays
+      // sample-accurate even though EQ targets update per block.
+      const float gain =
+          inTransition
+              ? (static_cast<int32_t>(v) == outgoingVoice_
+                     ? timeline_.outgoingAt(blockStart + f).gain
+                     : timeline_.incomingAt(blockStart + f).gain)
+              : ramp.valueAt(blockStart + f);
       lastGain = gain;
       const size_t base = static_cast<size_t>(f) * kEngineChannelCount;
       for (int32_t c = 0; c < kEngineChannelCount; ++c) {
@@ -186,6 +256,30 @@ void Mixer::render(float* output, int32_t frameCount) {
     voice.framesRendered.fetch_add(
         static_cast<int64_t>(read / kEngineChannelCount),
         std::memory_order_relaxed);
+  }
+
+  // Retire a finished transition. The outgoing voice is deactivated rather
+  // than left running silently: a voice at zero gain still drains its ring and
+  // holds a decoder, and the preparation pipeline needs that slot back for the
+  // track after next.
+  if (timeline_.isArmed() && timeline_.isComplete(blockStart + frames)) {
+    if (outgoingVoice_ >= 0) {
+      voices_[static_cast<size_t>(outgoingVoice_)]->active.store(
+          false, std::memory_order_relaxed);
+      equalisers_[static_cast<size_t>(outgoingVoice_)].setBandGains(1.0f, 1.0f,
+                                                                   1.0f);
+    }
+    if (incomingVoice_ >= 0) {
+      // The incoming track is now simply playing, at its loudness-matched
+      // level, so hand it back to the ordinary gain ramp.
+      ramps_[static_cast<size_t>(incomingVoice_)] =
+          GainRamp{0, 0, timeline_.incomingAt(blockStart + frames).gain,
+                   timeline_.incomingAt(blockStart + frames).gain, false};
+    }
+    timeline_.clear();
+    outgoingVoice_ = -1;
+    incomingVoice_ = -1;
+    transitionsCompleted_.fetch_add(1, std::memory_order_relaxed);
   }
 
   for (size_t i = 0; i < sampleCount; ++i) {

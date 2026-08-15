@@ -14,6 +14,7 @@ add_executable(aidj_engine_tests
     test_eq.cpp
     test_time_stretch.cpp
     test_transition_timeline.cpp
+    test_mixer_transition.cpp
     test_engine.cpp
     test_analysis_rhythm.cpp
     test_analysis_tonal.cpp

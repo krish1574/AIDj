@@ -9,6 +9,8 @@
 #include "../AudioTypes.h"
 #include "../IAudioOutput.h"
 #include "../RingBuffer.h"
+#include "../dsp/ThreeBandEq.h"
+#include "TransitionTimeline.h"
 
 namespace aidj {
 
@@ -41,6 +43,9 @@ enum class CommandType : int32_t {
   SetVoiceActive,
   SetVoiceGain,
   DevCrossfade,
+  /** Arms a planned transition; the spec is handed over separately. */
+  ArmTransition,
+  ClearTransition,
   Reset,
 };
 
@@ -98,12 +103,34 @@ class Mixer final : public IAudioRenderer {
   /** Callable from any non-audio thread. */
   bool post(const Command& command);
 
+  /**
+   * Stages a transition to be armed by the next ArmTransition command.
+   *
+   * Two steps rather than one because the spec is far too large to fit in a
+   * Command, and the audio thread must not read a half-written struct. The
+   * caller writes the spec, then posts the command; the audio thread only ever
+   * copies it after seeing the command, by which point the write has completed.
+   */
+  void stageTransition(const TransitionSpec& spec, int32_t outgoingVoice,
+                       int32_t incomingVoice);
+
+  /** Which voices the armed transition is moving between. -1 when none. */
+  int32_t outgoingVoice() const { return outgoingVoice_; }
+  int32_t incomingVoice() const { return incomingVoice_; }
+
+  const TransitionTimeline& timeline() const { return timeline_; }
+
   Voice& voice(int32_t index) { return *voices_[static_cast<size_t>(index)]; }
   const Voice& voice(int32_t index) const {
     return *voices_[static_cast<size_t>(index)];
   }
 
   int64_t frameClock() const { return frameClock_.load(std::memory_order_relaxed); }
+
+  /** Increments each time a transition runs to completion. Polled by the UI. */
+  int64_t transitionsCompleted() const {
+    return transitionsCompleted_.load(std::memory_order_relaxed);
+  }
   /** Frames the mixer wanted but the decoders had not produced. */
   int64_t starvedFrames() const {
     return starvedFrames_.load(std::memory_order_relaxed);
@@ -115,9 +142,22 @@ class Mixer final : public IAudioRenderer {
 
   std::array<std::unique_ptr<Voice>, kVoiceCount> voices_;
   std::array<GainRamp, kVoiceCount> ramps_{};
+  /** One EQ per voice. Bypassed entirely while neutral, so it costs nothing. */
+  std::array<ThreeBandEq, kVoiceCount> equalisers_{};
+
+  /** Written by the control thread, copied by the audio thread on arming. */
+  TransitionSpec stagedSpec_{};
+  int32_t stagedOutgoing_ = -1;
+  int32_t stagedIncoming_ = -1;
+
+  TransitionTimeline timeline_;
+  int32_t outgoingVoice_ = -1;
+  int32_t incomingVoice_ = -1;
+
   CommandQueue commands_;
   std::atomic<int64_t> frameClock_{0};
   std::atomic<int64_t> starvedFrames_{0};
+  std::atomic<int64_t> transitionsCompleted_{0};
   /** Pre-allocated scratch, sized for a generous callback. Never resized. */
   std::vector<float> scratch_;
 };
