@@ -161,11 +161,25 @@ export const DEFAULT_TRANSITION_OPTIONS: TransitionOptions = {
   adaptIncoming: true,
 };
 
-/** Transition length in bars, before clamping to what the tracks allow. */
+/**
+ * Transition length in bars, before clamping to what the tracks allow.
+ *
+ * Bars rather than seconds, because a fixed ten-second fade is five bars at
+ * 120 BPM and seven at 170 - it would end mid-phrase on some tracks and not
+ * others. Counting bars means a transition always begins and ends on a bar
+ * line whatever the tempo.
+ *
+ * `extended` is roughly a minute at dance tempos. Worth knowing before using
+ * it: over that long, small tempo errors accumulate visibly. A 0.1% BPM error
+ * is about 60 ms of drift across a minute, which is a quarter of a beat at
+ * 126 BPM - so an extended blend is only as good as the beat grids under it,
+ * and the confidence values are what say whether to trust them.
+ */
 const LENGTH_IN_BARS: Record<TransitionLength, number> = {
   short: 4,
   medium: 8,
   long: 16,
+  extended: 32,
 };
 
 /** Linear gain for a decibel change. */
@@ -534,8 +548,16 @@ function simpleCrossfade(
   loudnessScore: number,
   reason: string,
 ): TransitionPlan {
+  // Fixed seconds rather than bars: without a shared grid there are no
+  // meaningful bars to count.
   const wantedDurationMs =
-    options.length === 'short' ? 3000 : options.length === 'long' ? 10000 : 6000;
+    options.length === 'short'
+      ? 3000
+      : options.length === 'long'
+        ? 10000
+        : options.length === 'extended'
+          ? 30000
+          : 6000;
 
   const outgoingStartMs = Math.max(
     0,

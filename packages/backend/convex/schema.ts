@@ -133,6 +133,8 @@ export default defineSchema({
       v.literal('short'),
       v.literal('medium'),
       v.literal('long'),
+      // Around a minute at dance tempos: a long blend rather than a fade.
+      v.literal('extended'),
     ),
     allowReordering: v.boolean(),
     targetLufs: v.number(),

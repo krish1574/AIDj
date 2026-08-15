@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 
-import type { LibraryTrack } from '@ai-dj/core';
+import type { LibraryTrack, TransitionLength } from '@ai-dj/core';
 
 import { Button } from '@/components/Button';
 import { Panel, Row } from '@/components/Panel';
@@ -24,6 +24,7 @@ export default function MixScreen() {
   const { state, run, stop } = useTransitionDemo();
   const [tracks, setTracks] = useState<LibraryTrack[]>([]);
   const [selected, setSelected] = useState<LibraryTrack[]>([]);
+  const [length, setLength] = useState<TransitionLength>('medium');
 
   const load = useCallback(async () => {
     const all = await listTracks({ limit: 200 });
@@ -101,6 +102,37 @@ export default function MixScreen() {
               </Panel>
             ) : null}
 
+            <Panel title="Blend length">
+              <View style={styles.lengths}>
+                {(['short', 'medium', 'long', 'extended'] as const).map(
+                  (option) => (
+                    <Text
+                      key={option}
+                      onPress={() => setLength(option)}
+                      style={[
+                        styles.lengthOption,
+                        length === option && styles.lengthOptionActive,
+                      ]}
+                    >
+                      {option === 'short'
+                        ? '4 bars'
+                        : option === 'medium'
+                          ? '8 bars'
+                          : option === 'long'
+                            ? '16 bars'
+                            : '32 bars'}
+                    </Text>
+                  ),
+                )}
+              </View>
+              <Text style={styles.muted}>
+                Measured in bars, so it lands on a bar line at any tempo. At
+                126 BPM that is roughly 8, 15, 30 and 60 seconds. Over a long
+                blend, small tempo errors accumulate - a 0.1% error drifts a
+                quarter of a beat across a minute.
+              </Text>
+            </Panel>
+
             {tracks.length === 0 ? (
               <Text style={styles.muted}>
                 No analysed tracks yet. Run the analysis screen first - a
@@ -138,7 +170,7 @@ export default function MixScreen() {
             }
             onPress={() => {
               const [outgoing, incoming] = selected;
-              if (outgoing && incoming) void run(outgoing, incoming);
+              if (outgoing && incoming) void run(outgoing, incoming, length);
             }}
             disabled={!canMix}
           />
@@ -168,6 +200,26 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.sm,
   },
   error: { color: theme.colour.negative, fontSize: theme.type.body.fontSize },
+  lengths: {
+    flexDirection: 'row',
+    gap: theme.space.sm,
+    marginBottom: theme.space.sm,
+  },
+  lengthOption: {
+    color: theme.colour.textMuted,
+    fontSize: theme.type.label.fontSize,
+    paddingVertical: theme.space.sm,
+    paddingHorizontal: theme.space.md,
+    borderRadius: theme.radius.sm,
+    borderColor: theme.colour.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  lengthOptionActive: {
+    color: theme.colour.text,
+    backgroundColor: theme.colour.accentMuted,
+    borderColor: theme.colour.accent,
+  },
   warning: {
     color: theme.colour.warning,
     fontSize: theme.type.label.fontSize,

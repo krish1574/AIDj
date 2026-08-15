@@ -1,7 +1,7 @@
 /** User-facing DJ preferences. Shared by the app, the API and Convex. */
 
 export type MixStyle = 'smooth' | 'balanced' | 'energetic';
-export type TransitionLength = 'short' | 'medium' | 'long';
+export type TransitionLength = 'short' | 'medium' | 'long' | 'extended';
 
 export interface UserPreferences {
   mixStyle: MixStyle;
@@ -32,4 +32,6 @@ export const TRANSITION_LENGTH_MS: Record<TransitionLength, number> = {
   short: 4_000,
   medium: 8_000,
   long: 16_000,
+  /** Around a minute at typical dance tempos - a long blend, not a fade. */
+  extended: 60_000,
 };

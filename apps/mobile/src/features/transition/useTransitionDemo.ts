@@ -1,6 +1,11 @@
 import { useCallback, useState } from 'react';
 
-import type { LibraryTrack, TransitionPlan, TransitionTrack } from '@ai-dj/core';
+import type {
+  LibraryTrack,
+  TransitionLength,
+  TransitionPlan,
+  TransitionTrack,
+} from '@ai-dj/core';
 import { describeTransition, planTransition } from '@ai-dj/core';
 
 import { AiDjAudio } from 'aidj-audio';
@@ -59,7 +64,11 @@ export function useTransitionDemo() {
   const [state, setState] = useState<DemoState>({ status: 'idle' });
 
   const run = useCallback(
-    async (outgoing: LibraryTrack, incoming: LibraryTrack) => {
+    async (
+      outgoing: LibraryTrack,
+      incoming: LibraryTrack,
+      length: TransitionLength = 'medium',
+    ) => {
       try {
         setState({ status: 'preparing', detail: 'Reading analysis…' });
 
@@ -75,7 +84,10 @@ export function useTransitionDemo() {
           return;
         }
 
-        const plan = planTransition(from, to);
+        const plan = planTransition(from, to, {
+          length,
+          adaptIncoming: true,
+        });
         const summary = describeTransition(plan);
 
         setState({ status: 'preparing', detail: 'Cueing tracks…' });
