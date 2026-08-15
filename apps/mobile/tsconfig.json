@@ -8,7 +8,8 @@
     "paths": {
       "@/*": ["./src/*"],
       "@ai-dj/core": ["../../packages/core/src/index.ts"],
-      "aidj-audio": ["./modules/aidj-audio/index.ts"]
+      "aidj-audio": ["./modules/aidj-audio/index.ts"],
+      "aidj-library": ["./modules/aidj-library/index.ts"]
     }
   },
   "include": [

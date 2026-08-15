@@ -24,6 +24,7 @@ config.resolver.disableHierarchicalLookup = true;
 // told separately or the import fails at runtime with "module not found".
 config.resolver.extraNodeModules = {
   'aidj-audio': path.resolve(projectRoot, 'modules/aidj-audio'),
+  'aidj-library': path.resolve(projectRoot, 'modules/aidj-library'),
 };
 
 module.exports = config;

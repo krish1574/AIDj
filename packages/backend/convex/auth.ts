@@ -18,8 +18,12 @@ import { Anonymous } from '@convex-dev/auth/providers/Anonymous';
  */
 const allowAnonymous = process.env.AIDJ_ALLOW_ANONYMOUS_AUTH === 'true';
 
+// The key is read at module load on the deployment, where it either exists or
+// the provider cannot send anything. Passing the property only when set keeps
+// the "unconfigured" case a deployment-config problem rather than a type lie.
+const resendKey = process.env.AUTH_RESEND_KEY;
+const email = Resend(resendKey === undefined ? {} : { apiKey: resendKey });
+
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-  providers: allowAnonymous
-    ? [Resend({ apiKey: process.env.AUTH_RESEND_KEY }), Anonymous]
-    : [Resend({ apiKey: process.env.AUTH_RESEND_KEY })],
+  providers: allowAnonymous ? [email, Anonymous] : [email],
 });

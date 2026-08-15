@@ -3,7 +3,43 @@
 Honest running list. Anything here is real, currently true, and not disguised
 as working functionality.
 
-## Milestone 1 (current)
+## Milestone 2 (current)
+
+### Playlists are local only
+The library and playlists live in SQLite on the device. Nothing syncs to Convex
+yet - that is Milestone 7. A factory reset or an app uninstall loses them.
+
+### Track identity is lazy, so cross-device matching is incomplete
+`content_hash` is computed only when a track first enters a playlist, because
+hashing reads 2 MiB per file and doing that for a whole library would stall the
+scan. Tracks that are merely *listed* have `content_hash = NULL` and cannot yet
+be matched against the same file on another device.
+
+### A rescan can empty a playlist
+Tracks absent from a scan are deleted, and that cascades to playlist entries.
+There is a guard against the common disaster - an empty scan on a device that
+previously had music is ignored rather than treated as a mass deletion - but a
+genuinely removed file still disappears from every playlist containing it. This
+is correct behaviour (an unplayable entry is worse) yet it is destructive and
+currently silent, with no "3 tracks are missing" prompt.
+
+### MediaStore is the only source
+Music that MediaStore has not indexed is invisible: files in app-private
+storage, some SD card states, and anything the media scanner has not yet picked
+up. There is no "add file manually" path in the library - the engine debug
+screen's picker is the only way to reach an arbitrary file, and it does not add
+to the library.
+
+### Reordering is buttons, not drag-and-drop
+Playlist reordering uses up/down controls. The ordering model underneath
+(sparse integer keys with compaction) is the real one and supports arbitrary
+moves; only the gesture layer is missing.
+
+### Nothing here plans a DJ set
+Ordering a playlist by hand is not queue planning. The Queue Planner needs BPM,
+key and energy from analysis, and does not exist until Milestone 4.
+
+## Milestone 1
 
 ### The product does not mix anything yet
 There is no playlist, no analysis, no queue planner and no transition engine.

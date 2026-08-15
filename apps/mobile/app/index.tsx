@@ -52,9 +52,9 @@ export default function HomeScreen() {
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={styles.heading}>AI DJ</Text>
       <Text style={styles.subheading}>
-        Milestone 1 - foundation. Playlists, analysis and mixing are not built
-        yet; this build exists to prove the app, the audio engine, the API and
-        Convex are genuinely wired together.
+        Milestone 2 - your music library and playlists. Analysis and DJ mixing
+        are not built yet: the app can list, organise and order tracks, but it
+        cannot yet hear them.
       </Text>
 
       <Panel title="Backend connectivity">
@@ -104,8 +104,14 @@ export default function HomeScreen() {
         </Panel>
       ) : null}
 
+      <Button label="Playlists" onPress={() => router.push('/playlists')} />
+      <Button
+        label="Music library"
+        onPress={() => router.push('/library')}
+        variant="secondary"
+      />
       <Button label="Re-check connectivity" onPress={() => void checkConnectivity()} variant="secondary" />
-      <Button label="Open engine debug" onPress={() => router.push('/debug')} />
+      <Button label="Open engine debug" onPress={() => router.push('/debug')} variant="secondary" />
 
       <View style={styles.notice}>
         <Text style={styles.noticeText}>
