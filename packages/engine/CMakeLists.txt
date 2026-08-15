@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # the whole point: the DSP and mixing logic must be testable without a device.
 set(AIDJ_CORE_SOURCES
     src/mix/Mixer.cpp
+    src/mix/TransitionTimeline.cpp
     src/dsp/Resampler.cpp
     src/dsp/ThreeBandEq.cpp
     src/dsp/TimeStretch.cpp
