@@ -84,6 +84,42 @@ class AiDjAudioModule : Module() {
       check(NativeEngine.nativeDevCrossfade(fromVoice, toVoice, durationMs))
     }
 
+    /**
+     * Loads a voice cued to a position and pre-stretched to a tempo.
+     *
+     * Separate from loadVoice because a transition needs the incoming track
+     * already decoding, already at the matched tempo and already sitting at
+     * its cue point before the fade starts.
+     */
+    AsyncFunction("prepareVoice") {
+      voiceIndex: Int, uri: String, startMs: Double, tempoRatio: Double ->
+      check(
+        NativeEngine.nativePrepareVoice(
+          voiceIndex,
+          resolveForNative(uri),
+          startMs,
+          tempoRatio
+        )
+      )
+    }
+
+    /** Arms a transition planned in TypeScript. Field order is fixed. */
+    AsyncFunction("armTransition") {
+      spec: DoubleArray, outgoingVoice: Int, incomingVoice: Int, delayMs: Double ->
+      if (spec.size < TransitionSpecFields.COUNT) {
+        throw AudioEngineException(EngineErrorCode.INVALID_STATE)
+      }
+      check(
+        NativeEngine.nativeArmTransition(spec, outgoingVoice, incomingVoice, delayMs)
+      )
+    }
+
+    AsyncFunction("clearTransition") { NativeEngine.nativeClearTransition() }
+
+    Function("transitionsCompleted") {
+      NativeEngine.nativeTransitionsCompleted().toDouble()
+    }
+
     // Synchronous by design: the debug screen polls this on a timer and an
     // async hop per poll would add jitter to the very numbers being observed.
     Function("getStatus") {

@@ -76,6 +76,82 @@ JNIEXPORT jint JNICALL Java_dj_ai_audio_NativeEngine_nativeDevCrossfade(
       engine().devCrossfade(fromVoice, toVoice, durationMs));
 }
 
+JNIEXPORT jint JNICALL Java_dj_ai_audio_NativeEngine_nativePrepareVoice(
+    JNIEnv* env, jobject, jint voiceIndex, jstring uri, jdouble startMs,
+    jdouble tempoRatio) {
+  return static_cast<jint>(engine().prepareVoice(
+      voiceIndex, toStdString(env, uri), startMs, tempoRatio));
+}
+
+/**
+ * Arms a planned transition.
+ *
+ * The spec crosses as a flat double array rather than a Java object, matching
+ * how status is returned: the layout is documented once in TransitionFields
+ * below and mirrored in NativeEngine.kt. Building an object graph for
+ * something written once per transition would be needless ceremony, and the
+ * flat form is what the C++ struct already is.
+ */
+JNIEXPORT jint JNICALL Java_dj_ai_audio_NativeEngine_nativeArmTransition(
+    JNIEnv* env, jobject, jdoubleArray specArray, jint outgoingVoice,
+    jint incomingVoice, jdouble delayMs) {
+  enum TransitionFields {
+    kDurationMs = 0,
+    kIncomingStartMs,
+    kOutgoingGain,
+    kIncomingGain,
+    kOutgoingTempoRatio,
+    kIncomingTempoRatio,
+    kOutgoingLowFrom,
+    kOutgoingLowTo,
+    kOutgoingMidFrom,
+    kOutgoingMidTo,
+    kIncomingLowFrom,
+    kIncomingLowTo,
+    kIncomingMidFrom,
+    kIncomingMidTo,
+    kOverlap,
+    kFieldCount,
+  };
+
+  if (env->GetArrayLength(specArray) < kFieldCount) {
+    return static_cast<jint>(aidj::EngineError::InvalidState);
+  }
+
+  jdouble values[kFieldCount];
+  env->GetDoubleArrayRegion(specArray, 0, kFieldCount, values);
+
+  aidj::TransitionSpec spec;
+  spec.durationMs = values[kDurationMs];
+  spec.incomingStartMs = values[kIncomingStartMs];
+  spec.outgoingGain = static_cast<float>(values[kOutgoingGain]);
+  spec.incomingGain = static_cast<float>(values[kIncomingGain]);
+  spec.outgoingTempoRatio = values[kOutgoingTempoRatio];
+  spec.incomingTempoRatio = values[kIncomingTempoRatio];
+  spec.outgoingLowFrom = static_cast<float>(values[kOutgoingLowFrom]);
+  spec.outgoingLowTo = static_cast<float>(values[kOutgoingLowTo]);
+  spec.outgoingMidFrom = static_cast<float>(values[kOutgoingMidFrom]);
+  spec.outgoingMidTo = static_cast<float>(values[kOutgoingMidTo]);
+  spec.incomingLowFrom = static_cast<float>(values[kIncomingLowFrom]);
+  spec.incomingLowTo = static_cast<float>(values[kIncomingLowTo]);
+  spec.incomingMidFrom = static_cast<float>(values[kIncomingMidFrom]);
+  spec.incomingMidTo = static_cast<float>(values[kIncomingMidTo]);
+  spec.overlap = values[kOverlap] > 0.5;
+
+  return static_cast<jint>(
+      engine().armTransition(spec, outgoingVoice, incomingVoice, delayMs));
+}
+
+JNIEXPORT void JNICALL
+Java_dj_ai_audio_NativeEngine_nativeClearTransition(JNIEnv*, jobject) {
+  engine().clearTransition();
+}
+
+JNIEXPORT jlong JNICALL
+Java_dj_ai_audio_NativeEngine_nativeTransitionsCompleted(JNIEnv*, jobject) {
+  return static_cast<jlong>(engine().transitionsCompleted());
+}
+
 /**
  * Status is returned as a flat double array rather than a JNI-constructed
  * object graph: it is polled a few times a second and allocating a Java object

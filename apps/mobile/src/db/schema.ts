@@ -119,6 +119,20 @@ const migrations: Migration[] = [
       );
     `);
   },
+
+  // 3 - downbeat indices
+  //
+  // The analyser has always produced these, but they were not persisted, so
+  // the transition planner could never align to a bar and fell back to a plain
+  // crossfade every time. Stored as JSON rather than a blob: a four minute
+  // track has around a hundred, and even a fifty minute mix only a few
+  // thousand, which is small enough that a separate file would cost more than
+  // it saved.
+  async (db) => {
+    await db.execAsync(`
+      ALTER TABLE track_analysis ADD COLUMN downbeats_json TEXT NOT NULL DEFAULT '[]';
+    `);
+  },
 ];
 
 /**

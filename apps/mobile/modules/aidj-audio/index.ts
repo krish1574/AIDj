@@ -1,6 +1,6 @@
 import { requireNativeModule } from 'expo-modules-core';
 
-import type { EngineStatus, VoiceIndex } from '@ai-dj/core';
+import type { EngineStatus, TransitionPlan, VoiceIndex } from '@ai-dj/core';
 
 /**
  * Typed facade over the native audio engine.
@@ -26,6 +26,20 @@ interface AiDjAudioNativeModule {
     toVoice: number,
     durationMs: number,
   ): Promise<void>;
+  prepareVoice(
+    voiceIndex: number,
+    uri: string,
+    startMs: number,
+    tempoRatio: number,
+  ): Promise<void>;
+  armTransition(
+    spec: number[],
+    outgoingVoice: number,
+    incomingVoice: number,
+    delayMs: number,
+  ): Promise<void>;
+  clearTransition(): Promise<void>;
+  transitionsCompleted(): number;
   getStatus(): EngineStatus;
 }
 
@@ -52,7 +66,71 @@ export const AiDjAudio = {
   devCrossfade: (from: VoiceIndex, to: VoiceIndex, durationMs: number) =>
     native.devCrossfade(from, to, durationMs),
 
+  /**
+   * Loads a voice cued to `startMs` and pre-stretched to `tempoRatio`.
+   * The tempo must be set here rather than at transition time: audio already
+   * in the ring keeps the rate it was decoded at.
+   */
+  prepareVoice: (
+    voice: VoiceIndex,
+    uri: string,
+    startMs: number,
+    tempoRatio: number,
+  ) => native.prepareVoice(voice, uri, startMs, tempoRatio),
+
+  /**
+   * Arms a transition planned by `planTransition` from @ai-dj/core.
+   *
+   * `delayMs` is how far ahead it should begin, which is how the transition is
+   * made to land on a chosen beat rather than whenever the call is processed.
+   */
+  armTransition: (
+    plan: TransitionPlan,
+    outgoingVoice: VoiceIndex,
+    incomingVoice: VoiceIndex,
+    delayMs: number,
+  ) =>
+    native.armTransition(
+      transitionPlanToSpec(plan),
+      outgoingVoice,
+      incomingVoice,
+      delayMs,
+    ),
+
+  clearTransition: () => native.clearTransition(),
+
+  /** Increments each time a transition finishes. Poll to detect completion. */
+  transitionsCompleted: (): number => native.transitionsCompleted(),
+
   getStatus: (): EngineStatus => native.getStatus(),
 };
 
-export type { EngineStatus, VoiceIndex };
+/**
+ * Flattens a plan into the array layout the native side expects.
+ *
+ * The order is fixed and mirrored in three places - here, TransitionSpecFields
+ * in NativeEngine.kt, and TransitionFields in JniBridge.cpp. Kept as a single
+ * function so there is exactly one place to change it.
+ */
+export function transitionPlanToSpec(plan: TransitionPlan): number[] {
+  return [
+    plan.durationMs,
+    plan.incomingStartMs,
+    plan.outgoingGain,
+    plan.incomingGain,
+    plan.outgoingTempoRatio,
+    plan.incomingTempoRatio,
+    plan.eq.outgoing.lowFrom,
+    plan.eq.outgoing.lowTo,
+    plan.eq.outgoing.midFrom,
+    plan.eq.outgoing.midTo,
+    plan.eq.incoming.lowFrom,
+    plan.eq.incoming.lowTo,
+    plan.eq.incoming.midFrom,
+    plan.eq.incoming.midTo,
+    // Every style except the gapless fallback overlaps the two tracks.
+    plan.style === 'gapless' ? 0 : 1,
+  ];
+}
+
+export type { EngineStatus, TransitionPlan, VoiceIndex };

@@ -18,8 +18,51 @@ object NativeEngine {
   external fun nativeStopAll()
   external fun nativeDevCrossfade(fromVoice: Int, toVoice: Int, durationMs: Int): Int
 
+  /** Loads a voice, cued to startMs and pre-stretched to tempoRatio. */
+  external fun nativePrepareVoice(
+    voiceIndex: Int,
+    uri: String,
+    startMs: Double,
+    tempoRatio: Double
+  ): Int
+
+  /**
+   * Arms a planned transition. `spec` is the flat layout documented in
+   * JniBridge.cpp; TransitionSpecFields below must match it exactly.
+   */
+  external fun nativeArmTransition(
+    spec: DoubleArray,
+    outgoingVoice: Int,
+    incomingVoice: Int,
+    delayMs: Double
+  ): Int
+
+  external fun nativeClearTransition()
+
+  external fun nativeTransitionsCompleted(): Long
+
   /** Flat status array; see JniBridge.cpp for the layout. */
   external fun nativeStatus(): DoubleArray
+}
+
+/** Mirrors the TransitionFields enum in JniBridge.cpp. Order must match. */
+object TransitionSpecFields {
+  const val DURATION_MS = 0
+  const val INCOMING_START_MS = 1
+  const val OUTGOING_GAIN = 2
+  const val INCOMING_GAIN = 3
+  const val OUTGOING_TEMPO_RATIO = 4
+  const val INCOMING_TEMPO_RATIO = 5
+  const val OUTGOING_LOW_FROM = 6
+  const val OUTGOING_LOW_TO = 7
+  const val OUTGOING_MID_FROM = 8
+  const val OUTGOING_MID_TO = 9
+  const val INCOMING_LOW_FROM = 10
+  const val INCOMING_LOW_TO = 11
+  const val INCOMING_MID_FROM = 12
+  const val INCOMING_MID_TO = 13
+  const val OVERLAP = 14
+  const val COUNT = 15
 }
 
 /** Mirrors aidj::EngineError. */

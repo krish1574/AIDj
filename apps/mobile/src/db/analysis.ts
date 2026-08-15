@@ -36,6 +36,8 @@ export interface StoredAnalysis {
   analysisSampleRate: number;
   beatGridPath: string | null;
   sections: { startMs: number; endMs: number; energy: number; novelty: number }[];
+  /** Indices into the beat grid that start a bar. Empty when undetected. */
+  downbeatIndices: number[];
   analysedAtMs: number;
 }
 
@@ -95,8 +97,8 @@ export async function saveAnalysis(
        key_tonic, key_mode, key_confidence,
        integrated_lufs, peak_dbfs, energy,
        intro_end_ms, outro_start_ms, analysis_sample_rate,
-       beat_grid_path, sections_json, analysed_at_ms
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+       beat_grid_path, sections_json, analysed_at_ms, downbeats_json
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       track.id,
       ANALYSIS_VERSION,
@@ -122,6 +124,7 @@ export async function saveAnalysis(
       beatGridPath,
       JSON.stringify(result.sections),
       Date.now(),
+      JSON.stringify(result.downbeatIndices),
     ],
   );
 
@@ -231,6 +234,7 @@ export async function getAnalysis(
     analysisSampleRate: row.analysis_sample_rate as number,
     beatGridPath: (row.beat_grid_path as string | null) ?? null,
     sections: JSON.parse(row.sections_json as string),
+    downbeatIndices: JSON.parse((row.downbeats_json as string | null) ?? '[]'),
     analysedAtMs: row.analysed_at_ms as number,
   };
 }

@@ -33,6 +33,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" options={{ title: 'AI DJ' }} />
         <Stack.Screen name="library" options={{ title: 'Library' }} />
         <Stack.Screen name="analysis" options={{ title: 'Analysis' }} />
+        <Stack.Screen name="mix" options={{ title: 'Mix Test' }} />
         <Stack.Screen name="playlists" options={{ title: 'Playlists' }} />
         <Stack.Screen name="playlist/[id]" options={{ title: 'Playlist' }} />
         <Stack.Screen name="debug" options={{ title: 'Engine Debug' }} />
