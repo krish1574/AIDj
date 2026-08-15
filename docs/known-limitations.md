@@ -3,7 +3,48 @@
 Honest running list. Anything here is real, currently true, and not disguised
 as working functionality.
 
-## Milestone 2 (current)
+## Milestone 3 / 4 (current)
+
+### Key detection is not usable on percussion-heavy material
+Measured on a real 30-track library (Galaxy S24 FE, analysis version 3): key
+confidence came back at 0.00-0.16 for every music track. Tempo and beat
+tracking on the same files were fine (beat confidence 0.5-0.83).
+
+Two causes, both real rather than incidental:
+- chroma is computed by folding FFT bins onto pitch classes, which has poor
+  resolution in the low octaves where the tonic usually sits. A constant-Q
+  transform is the correct tool and is not implemented.
+- the library is dominated by garba and DJ edits, which genuinely have weak
+  and shifting tonality.
+
+The consequence is *correct* behaviour rather than a silent failure: the queue
+planner multiplies its key term by confidence, so key contributes nothing on
+this material and the planner falls back to tempo, energy and loudness. But it
+does mean harmonic mixing is effectively unavailable today, and the number
+should not be presented to users as if it were meaningful.
+
+### Analysis runs at roughly 8x real time
+Measured, not estimated: 130 s of audio takes ~17 s on a Galaxy S24 FE. A full
+pass over 7 hours of long mixes is therefore around an hour of sustained CPU.
+
+Removing the per-frame logarithms from the chroma loop made no measurable
+difference, so the cost is in decoding and the FFT. Anyone optimising should
+profile those and ignore the feature extractors.
+
+### Beat confidence took four attempts to get right
+Recorded because the failures are instructive and the metric is load-bearing -
+the transition planner is required to degrade when it is low. See the comment
+block in `BeatTracker.cpp`. Versions that compared beats against neighbouring
+frames all scored noise highly, because the dynamic-programming tracker places
+beats on local maxima by construction. The working version measures normalised
+autocorrelation of the onset envelope at the beat period.
+
+### Tempo octave errors still occur
+`Over the Horizon` (a ringtone) reports 194 BPM where the true value is
+probably ~97. Confidence was 0.10, so the system flags it as unreliable, and
+`alternateBpm` carries the other reading - but nothing yet acts on that.
+
+## Milestone 2
 
 ### Playlists are local only
 The library and playlists live in SQLite on the device. Nothing syncs to Convex

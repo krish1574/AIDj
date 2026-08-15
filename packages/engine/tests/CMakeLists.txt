@@ -12,6 +12,8 @@ add_executable(aidj_engine_tests
     test_mixer.cpp
     test_resampler.cpp
     test_engine.cpp
+    test_analysis_rhythm.cpp
+    test_analysis_tonal.cpp
     support/TestDecoder.cpp
     support/NullOutput.cpp
 )
@@ -19,5 +21,11 @@ add_executable(aidj_engine_tests
 target_link_libraries(aidj_engine_tests PRIVATE aidj_engine Catch2::Catch2WithMain)
 target_include_directories(aidj_engine_tests PRIVATE ../src .)
 
-include(Catch)
-catch_discover_tests(aidj_engine_tests)
+# catch_discover_tests runs the built binary at configure time to enumerate
+# test cases. That is impossible when cross-compiling for a device, so
+# registration is skipped there - the adb runner executes the binary directly
+# and Catch2 reports its own results.
+if(NOT AIDJ_TESTS_ON_DEVICE)
+  include(Catch)
+  catch_discover_tests(aidj_engine_tests)
+endif()

@@ -13,7 +13,17 @@
  * cached results wrong. Cached analysis with a different version is discarded
  * and the track is re-analysed. Never reuse an old number.
  */
-export const ANALYSIS_VERSION = 1;
+export const ANALYSIS_VERSION = 3;
+/*
+ * 3 - beat confidence is contrast x hit rate. Version 2 multiplied contrast by
+ *     the uniformity of on-beat strengths, which punished musical dynamics:
+ *     measured on real tracks it scored a mastered DJ edit at 0.05 and a
+ *     monotonous voice memo at 0.40, i.e. exactly backwards.
+ * 2 - beat confidence measured on-beat vs between-beat contrast. Version 1
+ *     compared on-beat strength against the overall mean, which saturated at
+ *     1.0 for every track including speech, so the planner had no way to
+ *     distinguish a solid grid from a meaningless one.
+ */
 
 export interface TrackIdentity {
   /**

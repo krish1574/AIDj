@@ -110,6 +110,11 @@ export default function HomeScreen() {
         onPress={() => router.push('/library')}
         variant="secondary"
       />
+      <Button
+        label="Analysis"
+        onPress={() => router.push('/analysis')}
+        variant="secondary"
+      />
       <Button label="Re-check connectivity" onPress={() => void checkConnectivity()} variant="secondary" />
       <Button label="Open engine debug" onPress={() => router.push('/debug')} variant="secondary" />
 

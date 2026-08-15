@@ -21,8 +21,13 @@ const native = requireNativeModule<AiDjLibraryNativeModule>('AiDjLibrary');
 /**
  * Below this, MediaStore's music collection is mostly ringtones, notification
  * sounds and voice-memo fragments. Nothing that short is a DJ-able track.
+ *
+ * Raised from 30 s after a real scan: a 30 s floor still admitted WhatsApp
+ * voice notes, push-to-talk clips and screen-recording audio, which were
+ * roughly half the short entries. 90 s is below the shortest plausible real
+ * track while excluding essentially all of that.
  */
-export const MIN_TRACK_DURATION_MS = 30_000;
+export const MIN_TRACK_DURATION_MS = 90_000;
 
 export const AiDjLibrary = {
   hasPermission: () => native.hasPermission(),

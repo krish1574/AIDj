@@ -14,6 +14,8 @@ apps/mobile/.expo/
 
 # Native build output
 packages/engine/build/
+# Cross-compiled test build for on-device runs; also holds a Catch2 clone.
+packages/engine/build-android/
 **/.cxx/
 
 # Convex

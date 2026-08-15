@@ -25,6 +25,7 @@ config.resolver.disableHierarchicalLookup = true;
 config.resolver.extraNodeModules = {
   'aidj-audio': path.resolve(projectRoot, 'modules/aidj-audio'),
   'aidj-library': path.resolve(projectRoot, 'modules/aidj-library'),
+  'aidj-analysis': path.resolve(projectRoot, 'modules/aidj-analysis'),
 };
 
 module.exports = config;

@@ -19,7 +19,9 @@
     "convex:dev": "npm run dev -w @ai-dj/backend",
     "mobile:start": "npm run start -w @ai-dj/mobile",
     "mobile:android": "npm run android -w @ai-dj/mobile",
-    "engine:test": "node scripts/engine-test.mjs"
+    "engine:test": "node scripts/engine-test.mjs",
+    "engine:test:device": "node scripts/engine-test-device.mjs",
+    "plan:preview": "node --experimental-strip-types scripts/plan-from-db.mjs"
   },
   "devDependencies": {
     "typescript": "^5.9.0",
