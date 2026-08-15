@@ -123,7 +123,18 @@ export default function PlaylistDetailScreen() {
 
       <View style={styles.footer}>
         <Button
+          label="Start AI DJ with this playlist"
+          onPress={() =>
+            router.push({
+              pathname: '/session',
+              params: { playlistId: String(playlistId) },
+            })
+          }
+          disabled={tracks.length < 2}
+        />
+        <Button
           label="Add tracks"
+          variant="secondary"
           onPress={() =>
             router.push({
               pathname: '/library',
@@ -132,9 +143,8 @@ export default function PlaylistDetailScreen() {
           }
         />
         <Text style={styles.note}>
-          There is no Start AI DJ button yet. Ordering a playlist is not the
-          same as planning a DJ queue - that needs BPM, key and beat grids from
-          Milestones 3 and 4.
+          Tracks need analysing before they can be mixed - the DJ needs beat
+          grids, not just an order.
         </Text>
       </View>
     </View>

@@ -104,7 +104,12 @@ export default function HomeScreen() {
         </Panel>
       ) : null}
 
-      <Button label="Playlists" onPress={() => router.push('/playlists')} />
+      <Button label="Start AI DJ" onPress={() => router.push('/session')} />
+      <Button
+        label="Playlists"
+        onPress={() => router.push('/playlists')}
+        variant="secondary"
+      />
       <Button
         label="Music library"
         onPress={() => router.push('/library')}
