@@ -249,6 +249,26 @@ bool MediaCodecDecoder::pumpCodec() {
 size_t MediaCodecDecoder::decode(float* destination, size_t maxSamples) {
   if (codec_ == nullptr) return 0;
 
+  // Drop the residual between the sync sample the seek landed on and the
+  // position that was actually asked for. Doing it here rather than in the
+  // caller keeps sample-exact cueing a property of the decoder, which is the
+  // only place that knows both numbers.
+  while (discardFrames_ > 0 && !outputExhausted_) {
+    const size_t channels = static_cast<size_t>(std::max(1, format_.channelCount));
+    const size_t availableSamples = pending_.size() - pendingOffset_;
+    const int64_t availableFrames =
+        static_cast<int64_t>(availableSamples / channels);
+
+    if (availableFrames == 0) {
+      if (!pumpCodec()) break;
+      continue;
+    }
+
+    const int64_t drop = std::min(discardFrames_, availableFrames);
+    pendingOffset_ += static_cast<size_t>(drop) * channels;
+    discardFrames_ -= drop;
+  }
+
   while (pending_.size() - pendingOffset_ < maxSamples && !outputExhausted_) {
     if (!pumpCodec()) break;
   }
@@ -286,6 +306,7 @@ void MediaCodecDecoder::close() {
   pendingOffset_ = 0;
   inputExhausted_ = false;
   outputExhausted_ = false;
+  discardFrames_ = 0;
   format_ = DecodedFormat{};
 }
 
@@ -311,6 +332,25 @@ EngineError MediaCodecDecoder::seek(double positionMs) {
   pendingOffset_ = 0;
   inputExhausted_ = false;
   outputExhausted_ = false;
+
+  // Sync samples are sparse - tens to hundreds of milliseconds apart depending
+  // on the container - so the seek lands somewhere BEFORE the requested time,
+  // not on it. Left uncorrected, a deck starts at an arbitrary offset from the
+  // downbeat the planner chose, and no amount of correct beat-matching
+  // arithmetic can make the two tracks lock. This is the difference between a
+  // beat-matched mix and two records that happen to be playing at once.
+  //
+  // The residual is discarded in decode(), where samples are available.
+  const int64_t actualUs = AMediaExtractor_getSampleTime(extractor_);
+  if (actualUs >= 0 && actualUs < positionUs) {
+    const double residualSeconds =
+        static_cast<double>(positionUs - actualUs) / 1000000.0;
+    discardFrames_ =
+        static_cast<int64_t>(residualSeconds * format_.sampleRate);
+  } else {
+    discardFrames_ = 0;
+  }
+
   return EngineError::None;
 }
 

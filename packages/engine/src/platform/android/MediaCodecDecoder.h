@@ -30,6 +30,15 @@ class MediaCodecDecoder final : public IDecoder {
 
   EngineError open(const std::string& uri) override;
   EngineError seek(double positionMs) override;
+
+ private:
+  /**
+   * Frames still to drop so a seek lands on the exact requested position
+   * rather than the sync sample before it. See seek().
+   */
+  int64_t discardFrames_ = 0;
+
+ public:
   DecodedFormat format() const override;
   size_t decode(float* destination, size_t maxSamples) override;
   void close() override;
