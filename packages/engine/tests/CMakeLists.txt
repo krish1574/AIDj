@@ -11,6 +11,8 @@ add_executable(aidj_engine_tests
     test_ring_buffer.cpp
     test_mixer.cpp
     test_resampler.cpp
+    test_eq.cpp
+    test_time_stretch.cpp
     test_engine.cpp
     test_analysis_rhythm.cpp
     test_analysis_tonal.cpp

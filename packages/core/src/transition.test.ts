@@ -1,0 +1,274 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  MAX_TEMPO_STRETCH,
+  MIN_BEAT_CONFIDENCE,
+  crossfadeGains,
+  loudnessGain,
+  nearestBeatIndex,
+  phraseAlignedDownbeat,
+  planTransition,
+  type TransitionTrack,
+} from './transition';
+
+/** A track with a perfectly regular grid, so tests control every variable. */
+function track(overrides: Partial<TransitionTrack> & { id: number }): TransitionTrack {
+  const bpm = overrides.bpm ?? 128;
+  const durationMs = overrides.durationMs ?? 240_000;
+  const beatInterval = 60_000 / bpm;
+  const beatCount = Math.floor(durationMs / beatInterval);
+
+  const beatsMs = Array.from({ length: beatCount }, (_, i) => i * beatInterval);
+  const downbeatIndices = Array.from(
+    { length: Math.floor(beatCount / 4) },
+    (_, i) => i * 4,
+  );
+
+  return {
+    title: `Track ${overrides.id}`,
+    durationMs,
+    bpm,
+    beatConfidence: 0.8,
+    beatsMs,
+    downbeatIndices,
+    beatsPerBar: 4,
+    introEndMs: 2_000,
+    outroStartMs: durationMs - 20_000,
+    integratedLufs: -10,
+    ...overrides,
+  };
+}
+
+describe('loudnessGain', () => {
+  it('lifts a quiet track towards the target', () => {
+    expect(loudnessGain(-20)).toBeGreaterThan(1);
+  });
+
+  it('pulls a loud track down', () => {
+    expect(loudnessGain(-6)).toBeLessThan(1);
+  });
+
+  it('clamps rather than amplifying a very quiet track into noise', () => {
+    // -40 LUFS would want +26 dB. Applying that does not make it loud, it
+    // makes it noisy, and destroys whatever dynamics the master had.
+    const gain = loudnessGain(-40);
+    const decibels = 20 * Math.log10(gain);
+    expect(decibels).toBeLessThanOrEqual(6.001);
+  });
+
+  it('does not guess when loudness is unknown', () => {
+    expect(loudnessGain(Number.NaN)).toBe(1);
+    expect(loudnessGain(0)).toBe(1);
+  });
+});
+
+describe('crossfadeGains', () => {
+  it('sums to constant power rather than constant amplitude', () => {
+    // A linear fade dips ~3 dB in the middle, an audible sag exactly where
+    // both tracks should be strongest.
+    for (const progress of [0, 0.25, 0.5, 0.75, 1]) {
+      const { outgoing, incoming } = crossfadeGains(progress);
+      const power = outgoing * outgoing + incoming * incoming;
+      expect(power).toBeCloseTo(1, 6);
+    }
+  });
+
+  it('starts fully on the outgoing track and ends fully on the incoming one', () => {
+    expect(crossfadeGains(0).outgoing).toBeCloseTo(1, 6);
+    expect(crossfadeGains(0).incoming).toBeCloseTo(0, 6);
+    expect(crossfadeGains(1).outgoing).toBeCloseTo(0, 6);
+    expect(crossfadeGains(1).incoming).toBeCloseTo(1, 6);
+  });
+
+  it('clamps out-of-range progress instead of producing nonsense gains', () => {
+    expect(crossfadeGains(-1).outgoing).toBeCloseTo(1, 6);
+    expect(crossfadeGains(2).incoming).toBeCloseTo(1, 6);
+  });
+});
+
+describe('nearestBeatIndex', () => {
+  const beats = [0, 500, 1000, 1500, 2000];
+
+  it('finds the closest beat on either side', () => {
+    expect(nearestBeatIndex(beats, 1010)).toBe(2);
+    expect(nearestBeatIndex(beats, 1490)).toBe(3);
+    expect(nearestBeatIndex(beats, 0)).toBe(0);
+  });
+
+  it('clamps beyond the end of the grid', () => {
+    expect(nearestBeatIndex(beats, 99999)).toBe(4);
+  });
+
+  it('reports -1 when there is no grid rather than inventing a beat', () => {
+    expect(nearestBeatIndex([], 1000)).toBe(-1);
+  });
+});
+
+describe('phraseAlignedDownbeat', () => {
+  it('lands on a downbeat, not an arbitrary time', () => {
+    const subject = track({ id: 1, bpm: 120 });
+    const result = phraseAlignedDownbeat(subject, 10_000);
+    expect(result).not.toBeNull();
+    const beatTime = subject.beatsMs[(result as { beatIndex: number }).beatIndex];
+    expect(subject.downbeatIndices).toContain(
+      (result as { beatIndex: number }).beatIndex,
+    );
+    expect(beatTime as number).toBeGreaterThanOrEqual(10_000);
+  });
+
+  it('prefers a phrase start when one is within reach', () => {
+    const subject = track({ id: 1, bpm: 120 });
+    const result = phraseAlignedDownbeat(subject, 0);
+    expect(result?.onPhrase).toBe(true);
+  });
+
+  it('returns null when there are no downbeats', () => {
+    const subject = track({ id: 1, downbeatIndices: [] });
+    expect(phraseAlignedDownbeat(subject, 1000)).toBeNull();
+  });
+});
+
+describe('planTransition', () => {
+  it('beat-matches two compatible tracks', () => {
+    const plan = planTransition(
+      track({ id: 1, bpm: 128 }),
+      track({ id: 2, bpm: 128 }),
+    );
+
+    expect(['phraseAligned', 'beatAligned']).toContain(plan.style);
+    expect(plan.fallbackReason).toBeUndefined();
+    expect(plan.incomingTempoRatio).toBeCloseTo(1, 6);
+  });
+
+  it('starts the transition on a downbeat of the outgoing track', () => {
+    const outgoing = track({ id: 1, bpm: 128 });
+    const plan = planTransition(outgoing, track({ id: 2, bpm: 128 }));
+
+    // The chosen time must actually be one of the outgoing downbeats - the
+    // whole point is that it is not an arbitrary timestamp.
+    const downbeatTimes = outgoing.downbeatIndices.map(
+      (index) => outgoing.beatsMs[index] as number,
+    );
+    expect(downbeatTimes).toContain(plan.outgoingStartMs);
+  });
+
+  it('stretches the incoming track to the outgoing tempo', () => {
+    const plan = planTransition(
+      track({ id: 1, bpm: 128 }),
+      track({ id: 2, bpm: 124 }),
+    );
+
+    expect(plan.targetBpm).toBeCloseTo(128, 6);
+    expect(plan.incomingTempoRatio).toBeCloseTo(128 / 124, 4);
+    // The track people are already dancing to is left alone.
+    expect(plan.outgoingTempoRatio).toBe(1);
+  });
+
+  it('treats half time as the same pulse rather than a huge stretch', () => {
+    const plan = planTransition(
+      track({ id: 1, bpm: 140 }),
+      track({ id: 2, bpm: 70 }),
+    );
+
+    expect(plan.fallbackReason).toBeUndefined();
+    expect(plan.incomingTempoRatio).toBeCloseTo(1, 4);
+  });
+
+  it('falls back to a crossfade when tempos are too far apart', () => {
+    const plan = planTransition(
+      track({ id: 1, bpm: 128 }),
+      track({ id: 2, bpm: 160 }),
+    );
+
+    expect(plan.style).toBe('crossfade');
+    expect(plan.fallbackReason).toContain('%');
+    expect(plan.incomingTempoRatio).toBe(1);
+  });
+
+  it('refuses to beat-match against an untrustworthy grid', () => {
+    // This is the reason beat confidence had to become a real measurement:
+    // matching to an arbitrary grid sounds worse than not matching at all.
+    const plan = planTransition(
+      track({ id: 1, bpm: 128 }),
+      track({ id: 2, bpm: 128, beatConfidence: MIN_BEAT_CONFIDENCE - 0.01 }),
+    );
+
+    expect(plan.style).toBe('crossfade');
+    expect(plan.fallbackReason).toContain('beat grid');
+  });
+
+  it('swaps the bass on a beat-matched transition but not on a fallback', () => {
+    const matched = planTransition(
+      track({ id: 1, bpm: 128 }),
+      track({ id: 2, bpm: 128 }),
+    );
+    expect(matched.eq.outgoing.lowTo).toBe(0);
+    expect(matched.eq.incoming.lowFrom).toBe(0);
+
+    const fallback = planTransition(
+      track({ id: 1, bpm: 128 }),
+      track({ id: 2, bpm: 160 }),
+    );
+    // Ducking the bass of a track that is not rhythmically locked just sounds
+    // like a fault.
+    expect(fallback.eq.outgoing.lowTo).toBe(1);
+  });
+
+  it('never runs past the end of either track', () => {
+    const outgoing = track({ id: 1, bpm: 128, durationMs: 30_000 });
+    const incoming = track({ id: 2, bpm: 128, durationMs: 30_000 });
+    const plan = planTransition(outgoing, incoming, {
+      length: 'long',
+      adaptIncoming: true,
+    });
+
+    expect(plan.outgoingEndMs).toBeLessThanOrEqual(outgoing.durationMs);
+    expect(plan.incomingStartMs + plan.durationMs).toBeLessThanOrEqual(
+      incoming.durationMs,
+    );
+    expect(plan.durationMs).toBeGreaterThan(0);
+  });
+
+  it('always produces a plan, even for two unanalysable tracks', () => {
+    // Playback must never stop because a transition could not be worked out.
+    const broken = track({
+      id: 1,
+      beatsMs: [],
+      downbeatIndices: [],
+      beatConfidence: 0,
+      bpm: 0,
+    });
+    const plan = planTransition(broken, { ...broken, id: 2 });
+
+    expect(plan.durationMs).toBeGreaterThan(0);
+    expect(plan.style).toBe('crossfade');
+    expect(plan.fallbackReason).toBeDefined();
+  });
+
+  it('scores a clean match above a fallback', () => {
+    const clean = planTransition(
+      track({ id: 1, bpm: 128 }),
+      track({ id: 2, bpm: 128 }),
+    );
+    const forced = planTransition(
+      track({ id: 1, bpm: 128 }),
+      track({ id: 2, bpm: 170 }),
+    );
+
+    expect(clean.score.total).toBeGreaterThan(forced.score.total);
+  });
+
+  it('keeps the stretch within the documented limit whenever it matches', () => {
+    for (let bpm = 118; bpm <= 138; bpm += 1) {
+      const plan = planTransition(
+        track({ id: 1, bpm: 128 }),
+        track({ id: 2, bpm }),
+      );
+      if (plan.fallbackReason === undefined) {
+        expect(Math.abs(plan.incomingTempoRatio - 1)).toBeLessThanOrEqual(
+          MAX_TEMPO_STRETCH + 1e-9,
+        );
+      }
+    }
+  });
+});

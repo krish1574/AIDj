@@ -10,6 +10,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(AIDJ_CORE_SOURCES
     src/mix/Mixer.cpp
     src/dsp/Resampler.cpp
+    src/dsp/ThreeBandEq.cpp
+    src/dsp/TimeStretch.cpp
     src/DecodePump.cpp
     src/Engine.cpp
     src/analysis/Fft.cpp
