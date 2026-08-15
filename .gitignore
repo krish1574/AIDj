@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.env
+.env.local
+*.log
+
+# Expo / RN
+.expo/
+apps/mobile/android/
+apps/mobile/ios/
+apps/mobile/.expo/
+
+# Native build output
+packages/engine/build/
+**/.cxx/
+
+# Convex
+packages/backend/.convex/
+
+# Local audio test material - never commit copyrighted audio
+testdata/audio/

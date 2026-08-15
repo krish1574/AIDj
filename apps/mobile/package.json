@@ -1,0 +1,38 @@
+{
+  "name": "@ai-dj/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "prebuild": "expo prebuild --platform android",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-dj/core": "*",
+    "@convex-dev/auth": "^0.0.90",
+    "@expo/ui": "~57.0.11",
+    "convex": "^1.43.0",
+    "expo": "~57.0.12",
+    "expo-build-properties": "~57.0.10",
+    "expo-constants": "~57.0.10",
+    "expo-dev-client": "~57.0.11",
+    "expo-document-picker": "~57.0.1",
+    "expo-linking": "~57.0.5",
+    "expo-modules-core": "~57.0.10",
+    "expo-router": "~57.0.12",
+    "expo-secure-store": "~57.0.1",
+    "expo-status-bar": "~57.0.1",
+    "expo-system-ui": "~57.0.2",
+    "react": "19.2.3",
+    "react-native": "0.86.0",
+    "react-native-safe-area-context": "~5.9.0",
+    "react-native-screens": "~4.27.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.0",
+    "typescript": "^5.9.0"
+  }
+}

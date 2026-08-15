@@ -1,0 +1,19 @@
+{
+  "name": "@ai-dj/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@convex-dev/auth": "^0.0.90",
+    "@auth/core": "0.37.0",
+    "convex": "^1.43.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}

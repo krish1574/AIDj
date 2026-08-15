@@ -1,0 +1,58 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'dj.ai.audio'
+version = '0.1.0'
+
+android {
+  namespace 'dj.ai.audio'
+
+  // Pinned to the same NDK the app uses. Left unset, the Expo module plugin
+  // picks its own default and Gradle silently downloads a second toolchain.
+  ndkVersion '27.1.12297006'
+
+  defaultConfig {
+    minSdkVersion 26  // AAudio, and the NDK media APIs we rely on
+    versionCode 1
+    versionName '0.1.0'
+
+    externalNativeBuild {
+      cmake {
+        cppFlags '-std=c++17', '-fexceptions', '-frtti'
+        arguments '-DANDROID_STL=c++_shared'
+      }
+    }
+
+    // 32-bit ARM is below the performance floor this product needs and Google
+    // Play no longer requires it. Dropping it halves native build time.
+    ndk {
+      abiFilters 'arm64-v8a', 'x86_64'
+    }
+  }
+
+  externalNativeBuild {
+    cmake {
+      path 'CMakeLists.txt'
+      version '3.22.1'
+    }
+  }
+
+  // Unpacks the headers and .so out of the Oboe AAR and generates the CMake
+  // config that find_package(oboe) resolves against. Without this the
+  // dependency below is on the classpath but invisible to the native build.
+  buildFeatures {
+    prefab true
+  }
+
+  buildTypes {
+    release {
+      minifyEnabled false
+    }
+  }
+}
+
+dependencies {
+  // Oboe arrives as a prefab AAR, so CMake can find_package it.
+  implementation 'com.google.oboe:oboe:1.9.3'
+}

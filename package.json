@@ -1,0 +1,32 @@
+{
+  "name": "ai-dj",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/core",
+    "packages/backend",
+    "apps/api",
+    "apps/mobile"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "api:dev": "npm run dev -w @ai-dj/api",
+    "convex:dev": "npm run dev -w @ai-dj/backend",
+    "mobile:start": "npm run start -w @ai-dj/mobile",
+    "mobile:android": "npm run android -w @ai-dj/mobile",
+    "engine:test": "node scripts/engine-test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  },
+  "allowScripts": {
+    "esbuild@0.27.0": true,
+    "esbuild@0.28.2": true
+  }
+}
