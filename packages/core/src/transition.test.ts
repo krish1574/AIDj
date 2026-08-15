@@ -315,6 +315,55 @@ describe('planTransition', () => {
     expect(plan.fallbackReason).toBeDefined();
   });
 
+  it('locks the two grids across the whole blend, not just its first beat', () => {
+    // A ratio from average BPM only guarantees alignment at the start. Over a
+    // long blend the decks slide apart, which is what makes a mix sound like
+    // two records playing at once.
+    //
+    // This track drifts: its beats are slightly further apart as it goes, so
+    // its average BPM does not describe the blend window.
+    const drifting = track({ id: 2, bpm: 128 });
+    const drifted = {
+      ...drifting,
+      beatsMs: drifting.beatsMs.map((time, index) => time + index * index * 0.01),
+    };
+
+    const plan = planTransition(track({ id: 1, bpm: 128 }), drifted, {
+      length: 'long',
+      adaptIncoming: true,
+    });
+
+    if (plan.fallbackReason !== undefined) return;
+
+    // Work out where each grid actually is after the blend, at the planned
+    // ratio. If the ratio came from average BPM these would not agree.
+    const beatsInBlend = Math.round(
+      plan.durationMs / ((60_000 / plan.targetBpm)),
+    );
+
+    const outgoing = track({ id: 1, bpm: 128 });
+    const startIndexOut = outgoing.beatsMs.findIndex(
+      (time) => time >= plan.outgoingStartMs - 1,
+    );
+    const startIndexIn = drifted.beatsMs.findIndex(
+      (time) => time >= plan.incomingStartMs - 1,
+    );
+
+    const endOut = outgoing.beatsMs[startIndexOut + beatsInBlend];
+    const endIn = drifted.beatsMs[startIndexIn + beatsInBlend];
+    if (endOut === undefined || endIn === undefined) return;
+
+    const outgoingSpan = endOut - plan.outgoingStartMs;
+    // The incoming track is played at the planned rate, so its span shrinks.
+    const incomingSpan =
+      (endIn - plan.incomingStartMs) / plan.incomingTempoRatio;
+
+    const driftMs = Math.abs(outgoingSpan - incomingSpan);
+    // Within a tenth of a beat across the entire blend.
+    const beatMs = 60_000 / plan.targetBpm;
+    expect(driftMs).toBeLessThan(beatMs * 0.1);
+  });
+
   it('scores a clean match above a fallback', () => {
     const clean = planTransition(
       track({ id: 1, bpm: 128 }),

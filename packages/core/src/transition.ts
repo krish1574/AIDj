@@ -486,10 +486,51 @@ export function planTransition(
   const remainingOutgoing = outgoing.durationMs - outgoingStartMs;
   const remainingIncoming =
     (incoming.durationMs - incomingStartMs) / incomingTempoRatio;
-  const durationMs = Math.max(
+  let durationMs = Math.max(
     msPerBar,
     Math.min(wantedDurationMs, remainingOutgoing, remainingIncoming),
   );
+
+  // Lock the two grids across the whole blend, not just at its first beat.
+  //
+  // A ratio derived from average BPM only guarantees alignment at the moment
+  // the transition starts. Real tracks are not metronomic, and the averages
+  // are estimates, so the decks slide apart: a 0.1% error is a quarter of a
+  // beat after a minute, which is what makes a long blend sound like two
+  // records playing rather than a mix.
+  //
+  // Measuring the same number of bars on each grid and stretching one onto the
+  // other makes them coincide at the start AND the end by construction, with
+  // the error spread evenly between rather than accumulating.
+  const barsInBlend = Math.max(1, Math.round(durationMs / msPerBar));
+  const beatsInBlend = barsInBlend * outgoing.beatsPerBar;
+
+  const outgoingEndBeat = outgoingPoint.beatIndex + beatsInBlend;
+  const incomingEndBeat = incomingPoint.beatIndex + beatsInBlend;
+
+  let gridLockedRatio = incomingTempoRatio;
+  if (
+    options.adaptIncoming &&
+    outgoingEndBeat < outgoing.beatsMs.length &&
+    incomingEndBeat < incoming.beatsMs.length
+  ) {
+    const outgoingSpan =
+      (outgoing.beatsMs[outgoingEndBeat] as number) - outgoingStartMs;
+    const incomingSpan =
+      (incoming.beatsMs[incomingEndBeat] as number) - incomingStartMs;
+
+    if (outgoingSpan > 0 && incomingSpan > 0) {
+      const measured = incomingSpan / outgoingSpan;
+      // Only trust the measurement when it agrees with the tempo estimate.
+      // A wildly different value means the grids disagree about metrical
+      // level, and stretching to match it would be worse than not.
+      if (Math.abs(measured - requiredRatio) < MAX_TEMPO_STRETCH) {
+        gridLockedRatio = measured;
+        // The blend now lasts exactly the measured bars of the outgoing track.
+        durationMs = outgoingSpan;
+      }
+    }
+  }
 
   const onPhrase = outgoingPoint.onPhrase && incomingPoint.onPhrase;
 
@@ -509,7 +550,7 @@ export function planTransition(
     durationMs,
     targetBpm,
     outgoingTempoRatio,
-    incomingTempoRatio,
+    incomingTempoRatio: gridLockedRatio,
     outgoingGain,
     incomingGain,
     eq: bassSwapEq(),
