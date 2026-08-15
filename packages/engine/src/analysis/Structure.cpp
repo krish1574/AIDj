@@ -110,6 +110,16 @@ std::vector<float> footeNovelty(
 
 }  // namespace
 
+double minimumSectionMsFor(double durationMs) {
+  // 2% of the track, clamped. The lower bound keeps short songs from being
+  // sliced into fragments; the upper bound stops an hour-long mix from being
+  // reduced to a handful of enormous blocks that are useless as entry points.
+  constexpr double kFraction = 0.02;
+  constexpr double kFloorMs = 8000.0;     // 8 s
+  constexpr double kCeilingMs = 120000.0; // 2 min
+  return std::clamp(durationMs * kFraction, kFloorMs, kCeilingMs);
+}
+
 StructureResult analyseStructure(const std::vector<float>& chromaFrames,
                                  const std::vector<float>& rmsDb,
                                  const AnalysisFormat& format,
@@ -189,8 +199,11 @@ StructureResult analyseStructure(const std::vector<float>& chromaFrames,
   const double threshold = mean + std::sqrt(variance);
 
   const double blockMs = frameMs * static_cast<double>(options.downsample);
-  const size_t minGapBlocks = static_cast<size_t>(
-      std::max(1.0, options.minSectionMs / blockMs));
+  const double minSectionMs = options.minSectionMs > 0.0
+                                  ? options.minSectionMs
+                                  : minimumSectionMsFor(durationMs);
+  const size_t minGapBlocks =
+      static_cast<size_t>(std::max(1.0, minSectionMs / blockMs));
 
   std::vector<std::pair<size_t, float>> peaks;
   for (size_t i = 1; i + 1 < novelty.size(); ++i) {

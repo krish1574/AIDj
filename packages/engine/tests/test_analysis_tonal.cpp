@@ -187,6 +187,34 @@ TEST_CASE("structure finds a boundary where the music changes", "[analysis]") {
   REQUIRE(foundNearMidpoint);
 }
 
+TEST_CASE("minimum section length scales with track duration", "[analysis]") {
+  // A fixed floor over-segments long mixes: measured on a real 33 minute garba
+  // mix, an 8 s minimum produced 93 sections - one every 21 seconds - when the
+  // meaningful boundaries are song changes minutes apart.
+  const double fourMinutes = 4 * 60 * 1000.0;
+  const double thirtyThreeMinutes = 33 * 60 * 1000.0;
+  const double twoHours = 2 * 60 * 60 * 1000.0;
+
+  // Short songs keep the 8 s floor rather than being sliced finer.
+  REQUIRE(minimumSectionMsFor(30000.0) == 8000.0);
+  REQUIRE(minimumSectionMsFor(fourMinutes) == 8000.0);
+
+  // A 33 minute mix demands far coarser boundaries.
+  const double longMix = minimumSectionMsFor(thirtyThreeMinutes);
+  REQUIRE(longMix > 30000.0);
+  INFO("33 min -> " << longMix << " ms");
+
+  // But it is capped, so an hour-long file is not reduced to a few enormous
+  // blocks that are useless as entry points.
+  REQUIRE(minimumSectionMsFor(twoHours) <= 120000.0);
+
+  // Monotonic: a longer track never gets a finer minimum.
+  REQUIRE(minimumSectionMsFor(thirtyThreeMinutes) >=
+          minimumSectionMsFor(fourMinutes));
+  REQUIRE(minimumSectionMsFor(twoHours) >=
+          minimumSectionMsFor(thirtyThreeMinutes));
+}
+
 TEST_CASE("energy curve tracks level changes", "[analysis]") {
   AnalysisFormat format;
   OnsetEnvelope detector(format);

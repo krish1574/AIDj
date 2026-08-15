@@ -7,17 +7,31 @@
 namespace aidj {
 
 /**
- * Interleaved stereo resampler using Catmull-Rom cubic interpolation, plus
- * mono-to-stereo duplication.
+ * Interleaved stereo resampler using a Kaiser-windowed sinc polyphase FIR,
+ * plus mono-to-stereo duplication.
  *
- * KNOWN LIMITATION, stated plainly: cubic interpolation is not a
- * bandwidth-correct resampler. At the common 44.1 -> 48 kHz ratio its
- * imaging/aliasing artefacts sit roughly 60-70 dB down, which is fine for
- * bring-up and for verifying the playback path, but it is not the quality this
- * product should ship with. It must be replaced with a windowed-sinc polyphase
- * FIR before any listening evaluation of transition quality, because
- * resampling artefacts would contaminate that judgement. Tracked in
- * docs/known-limitations.md.
+ * This replaces an earlier Catmull-Rom cubic interpolator whose imaging and
+ * aliasing artefacts sat only ~60-70 dB down. That was adequate for bringing
+ * playback up, but not for judging how a *transition* sounds: artefacts at
+ * that level are audible in quiet passages and would have contaminated exactly
+ * the listening evaluation the transition engine has to be tuned against.
+ *
+ * Design, and why each choice:
+ *
+ * - Kaiser window, beta 8.6. Gives roughly 90 dB stopband attenuation, which
+ *   puts resampling artefacts below the noise floor of any real recording.
+ * - 32 taps per output sample. Enough for a transition band narrow enough to
+ *   preserve content near Nyquist at the 44.1 -> 48 kHz ratio that dominates
+ *   real libraries.
+ * - 512 phases. The phase quantisation error is then far smaller than the
+ *   filter's own stopband, so no inter-phase interpolation is needed.
+ * - When downsampling, the cutoff moves below the *output* Nyquist and the
+ *   filter widens in proportion. Without that, decimation folds everything
+ *   above the new Nyquist back into the audible band, which is the one
+ *   resampling mistake that is unmistakably audible.
+ *
+ * Each phase's coefficients are normalised to sum to one, so DC gain is exactly
+ * unity and a full-scale input cannot come out louder than it went in.
  */
 class Resampler {
  public:
@@ -26,7 +40,7 @@ class Resampler {
   /**
    * Consumes `sourceSampleCount` interleaved source samples and appends the
    * converted stereo result to `output`. Retains the trailing samples needed
-   * for interpolation continuity across calls, so there is no seam at buffer
+   * for filter continuity across calls, so there is no seam at buffer
    * boundaries.
    */
   void process(const float* source, size_t sourceSampleCount,
@@ -39,15 +53,44 @@ class Resampler {
 
   bool isPassThrough() const { return passThrough_; }
 
+  /** Filter half-length in source frames. Exposed for tests and latency maths. */
+  size_t halfTaps() const { return halfTaps_; }
+
  private:
-  static float catmullRom(float p0, float p1, float p2, float p3, float t);
+  void buildFilterTable(double ratio);
 
   int32_t sourceChannels_ = 2;
   double ratio_ = 1.0;  // source frames consumed per output frame
-  double position_ = 0.0;
+
+  /**
+   * Read position, split into an exact frame index and a fraction in [0, 1).
+   *
+   * Deliberately not one double. Trimming consumed history subtracts a
+   * different integer at a different time depending on how input was chunked,
+   * and a single double accumulates those operations in a different order each
+   * way. The results differ by an ULP, which is enough to select a
+   * neighbouring filter phase and make a 512-phase resampler produce different
+   * output for the same audio depending on buffer sizes - an audible seam at
+   * chunk boundaries. Keeping the fraction independent of trimming makes the
+   * output identical however the input is split.
+   */
+  size_t positionFrame_ = 0;
+  double positionFraction_ = 0.0;
+
+  /** ratio_ split the same way, so advancing never touches the integer part. */
+  size_t ratioWhole_ = 0;
+  double ratioFraction_ = 0.0;
+
   bool passThrough_ = true;
-  /** History of source frames, de-interleaved into stereo pairs. */
+
+  /** Interleaved stereo history, including the filter's left context. */
   std::vector<float> history_;
+
+  /** phases x taps, row-major. Row p is the filter for fractional offset p/N. */
+  std::vector<float> table_;
+  size_t phases_ = 0;
+  size_t taps_ = 0;
+  size_t halfTaps_ = 0;
 };
 
 }  // namespace aidj

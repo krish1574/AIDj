@@ -93,14 +93,21 @@ sample-accurately and that the two-voice summing path is correct under real
 threading. Calling it a transition would be a lie: real transitions need beat
 grids (Milestone 3) and the transition planner (Milestone 5).
 
-### The resampler is not release quality
-`packages/engine/src/dsp/Resampler.cpp` uses Catmull-Rom cubic interpolation.
-At the common 44.1 kHz to 48 kHz ratio its imaging artefacts sit roughly
-60-70 dB down. That is fine for bring-up and for verifying the playback path.
+### ~~The resampler is not release quality~~ - FIXED
+Replaced with a Kaiser-windowed sinc polyphase FIR with interpolation between
+filter phases. Measured on-device at 44.1 -> 48 kHz: spurious content -96.7 dB
+at 1 kHz and -91.3 dB for a 20 kHz tone, versus roughly -60 to -70 dB for the
+Catmull-Rom interpolator it replaced. Downsampling 96 -> 48 kHz rejects
+above-Nyquist content at -119.9 dB.
 
-**It must be replaced with a windowed-sinc polyphase FIR before any human
-listening evaluation of transition quality**, because resampling artefacts
-would contaminate exactly the judgement that evaluation is meant to make.
+Two findings from that work are worth keeping, because both were invisible to
+the obvious test:
+- a 1 kHz test tone cannot detect near-Nyquist imaging at all. With the cutoff
+  sitting exactly at Nyquist, 1 kHz measured fine while a 20 kHz tone produced
+  spurious content at -24.8 dB.
+- filter length was not the limit for that case. Doubling the taps changed
+  nothing; phase quantisation was the limit, and interpolating between phases
+  moved it from -59.9 dB to -91.3 dB.
 
 ### The output limiter has no lookahead
 `Mixer::softLimit` is a soft-knee waveshaper. It cannot catch an inter-sample

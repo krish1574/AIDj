@@ -36,9 +36,30 @@ struct StructureOptions {
   int32_t downsample = 32;
   /** Half-width of the novelty kernel, in downsampled frames. */
   int32_t kernelHalfWidth = 32;
-  /** Boundaries closer together than this are merged. */
-  double minSectionMs = 8000.0;
+  /**
+   * Boundaries closer together than this are merged.
+   *
+   * Zero means "derive it from the track length", which is the sensible
+   * default and what the analyser uses - see minimumSectionMsFor(). A fixed
+   * value is only appropriate when the caller knows the material, as the tests
+   * do.
+   */
+  double minSectionMs = 0.0;
 };
+
+/**
+ * Minimum section length appropriate to a track of this duration.
+ *
+ * A fixed 8 s floor is right for a 4 minute song and badly wrong for a long
+ * continuous mix: measured on a 33 minute garba mix it produced 93 sections,
+ * roughly one every 21 seconds, when the meaningful boundaries are the song
+ * changes several minutes apart.
+ *
+ * Scaling with duration keeps both cases sensible - a few seconds of musical
+ * change is a section in a song, whereas in an hour-long mix only a sustained
+ * change is worth reporting.
+ */
+double minimumSectionMsFor(double durationMs);
 
 struct StructureResult {
   std::vector<Section> sections;

@@ -13,8 +13,13 @@
  * cached results wrong. Cached analysis with a different version is discarded
  * and the track is re-analysed. Never reuse an old number.
  */
-export const ANALYSIS_VERSION = 3;
+export const ANALYSIS_VERSION = 4;
 /*
+ * 4 - minimum section length scales with track duration. The fixed 8 s floor
+ *     over-segmented long mixes: a real 33 minute garba mix produced 93
+ *     sections, one every 21 seconds, when the meaningful boundaries are the
+ *     song changes minutes apart.
+
  * 3 - beat confidence is contrast x hit rate. Version 2 multiplied contrast by
  *     the uniformity of on-beat strengths, which punished musical dynamics:
  *     measured on real tracks it scored a mastered DJ edit at 0.05 and a
