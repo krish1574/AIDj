@@ -289,6 +289,31 @@ void MediaCodecDecoder::close() {
   format_ = DecodedFormat{};
 }
 
+EngineError MediaCodecDecoder::seek(double positionMs) {
+  if (extractor_ == nullptr || codec_ == nullptr) {
+    return EngineError::InvalidState;
+  }
+
+  // Seek to the closest sync sample at or before the target. Landing on a sync
+  // point matters: starting mid-frame gives a burst of garbage before the
+  // decoder resynchronises, which at a cue point is the first thing heard.
+  const int64_t positionUs = static_cast<int64_t>(positionMs * 1000.0);
+  if (AMediaExtractor_seekTo(extractor_, positionUs,
+                             AMEDIAEXTRACTOR_SEEK_PREVIOUS_SYNC) != AMEDIA_OK) {
+    return EngineError::DecoderIoError;
+  }
+
+  // The codec is holding frames from before the seek; flushing discards them
+  // so the next output belongs to the new position.
+  AMediaCodec_flush(codec_);
+
+  pending_.clear();
+  pendingOffset_ = 0;
+  inputExhausted_ = false;
+  outputExhausted_ = false;
+  return EngineError::None;
+}
+
 std::unique_ptr<IDecoder> createPlatformDecoder() {
   return std::make_unique<MediaCodecDecoder>();
 }

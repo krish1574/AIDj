@@ -77,6 +77,64 @@ EngineError Engine::loadVoice(int32_t voiceIndex, const std::string& uri) {
   return EngineError::None;
 }
 
+EngineError Engine::prepareVoice(int32_t voiceIndex, const std::string& uri,
+                                 double startMs, double tempoRatio) {
+  {
+    std::lock_guard<std::mutex> lock(controlMutex_);
+    if (!isValidVoice(voiceIndex)) return EngineError::InvalidState;
+    if (output_ == nullptr) return EngineError::InvalidState;
+
+    const size_t index = static_cast<size_t>(voiceIndex);
+    mixer_.post(Command{CommandType::SetVoiceActive, voiceIndex, 0, 0.0f, 0});
+    if (pumps_[index] != nullptr) pumps_[index]->stop();
+
+    auto decoder = createPlatformDecoder();
+    if (decoder == nullptr) return EngineError::DecoderUnsupportedFormat;
+
+    auto pump = std::make_unique<DecodePump>(mixer_.voice(voiceIndex),
+                                             std::move(decoder));
+    // The ratio must be set before the thread starts, or the first chunk of
+    // audio reaches the ring at the wrong tempo and the transition begins with
+    // the two grids already apart.
+    pump->setTempoRatio(tempoRatio);
+
+    const EngineError error = pump->start(uri, startMs);
+    if (error != EngineError::None) {
+      voiceLoaded_[index] = false;
+      lastError_.store(error, std::memory_order_relaxed);
+      return error;
+    }
+
+    pumps_[index] = std::move(pump);
+    voiceLoaded_[index] = true;
+  }
+  return EngineError::None;
+}
+
+EngineError Engine::armTransition(const TransitionSpec& spec,
+                                  int32_t outgoingVoice, int32_t incomingVoice,
+                                  double delayMs) {
+  std::lock_guard<std::mutex> lock(controlMutex_);
+  if (!isValidVoice(outgoingVoice) || !isValidVoice(incomingVoice)) {
+    return EngineError::InvalidState;
+  }
+  if (outgoingVoice == incomingVoice) return EngineError::InvalidState;
+  if (!voiceLoaded_[static_cast<size_t>(incomingVoice)]) {
+    return EngineError::InvalidState;
+  }
+
+  mixer_.stageTransition(spec, outgoingVoice, incomingVoice);
+  mixer_.post(Command{CommandType::ArmTransition, outgoingVoice, incomingVoice,
+                      0.0f, msToFrames(static_cast<int32_t>(delayMs))});
+  setState(EngineState::Playing);
+  return EngineError::None;
+}
+
+void Engine::clearTransition() {
+  std::lock_guard<std::mutex> lock(controlMutex_);
+  mixer_.post(Command{CommandType::ClearTransition, 0, 0, 0.0f, 0});
+}
+
 EngineError Engine::playVoice(int32_t voiceIndex) {
   std::lock_guard<std::mutex> lock(controlMutex_);
   if (!isValidVoice(voiceIndex)) return EngineError::InvalidState;

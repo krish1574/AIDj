@@ -74,6 +74,34 @@ class Engine {
   EngineError devCrossfade(int32_t fromVoice, int32_t toVoice,
                            int32_t durationMs);
 
+  /**
+   * Loads a voice and cues it to `startMs` at a given playback rate.
+   *
+   * This is what "prepare the next track" means in practice: the incoming
+   * track has to be decoding, already at the matched tempo, and positioned at
+   * its cue point before the transition begins. Doing any of that at the
+   * moment of the transition would produce exactly the gap the product exists
+   * to avoid.
+   */
+  EngineError prepareVoice(int32_t voiceIndex, const std::string& uri,
+                           double startMs, double tempoRatio);
+
+  /**
+   * Arms a planned transition between two prepared voices.
+   *
+   * `delayMs` is how far ahead of now it should begin, which is how a
+   * transition is made to land on a chosen beat rather than whenever the
+   * command happens to be processed.
+   */
+  EngineError armTransition(const TransitionSpec& spec, int32_t outgoingVoice,
+                            int32_t incomingVoice, double delayMs);
+
+  /** Cancels an armed transition, leaving both voices where they are. */
+  void clearTransition();
+
+  /** Increments each time a transition completes. Polled by the UI. */
+  int64_t transitionsCompleted() const { return mixer_.transitionsCompleted(); }
+
   EngineStatus status() const;
 
  private:

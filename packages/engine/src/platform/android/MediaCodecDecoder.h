@@ -29,6 +29,7 @@ class MediaCodecDecoder final : public IDecoder {
   ~MediaCodecDecoder() override;
 
   EngineError open(const std::string& uri) override;
+  EngineError seek(double positionMs) override;
   DecodedFormat format() const override;
   size_t decode(float* destination, size_t maxSamples) override;
   void close() override;

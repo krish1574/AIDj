@@ -27,6 +27,20 @@ class IDecoder {
   virtual DecodedFormat format() const = 0;
 
   /**
+   * Seeks to `positionMs`.
+   *
+   * Optional: the default reports failure, and callers are expected to fall
+   * back to decoding and discarding. That fallback is not merely a nicety -
+   * cueing 30 minutes into a long mix by decoding through it would take
+   * minutes, so a decoder that can seek properly is the difference between a
+   * usable cue point and an unusable one.
+   */
+  virtual EngineError seek(double positionMs) {
+    (void)positionMs;
+    return EngineError::DecoderIoError;
+  }
+
+  /**
    * Fills up to `maxSamples` interleaved floats. Returns the count written.
    * Returns 0 once the stream is exhausted.
    */
